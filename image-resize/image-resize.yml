@@ -1,0 +1,220 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "image resize lambda function and s3 result bucket"
+
+
+Parameters:
+
+  imageMaxSize:
+    Description: "desired maximum side length"
+    Type: "Number"
+    Default: 50
+
+  appName:
+    Description: "your app's name"
+    Type: "String"
+    Default: "image-resize"
+
+  environment:
+    Description: "your app's current environment"
+    Type: "String"
+    AllowedPattern: "^[a-zA-Z0-9]+[a-zA-Z0-9-]+[a-zA-Z0-9]+$"
+    Default: "dev"
+
+  codeBucketName:
+    Description: "s3 bucket that contains your lambda code"
+    Type: "String"
+    Default: "webinar-dev-123456789--code"
+
+  codeKey:
+    Description: "name of the lambda code zip file"
+    Type: "String"
+    Default: "image-resize_lambda.py.zip"
+
+  sourceBucketName:
+    Description: "source data s3 bucket"
+    Type: "String"
+    Default: "webinar-dev-123456789--rawdata"
+
+  codeRuntime:
+    Description: "runtime of your lambda function"
+    Type: "String"
+    Default: "python3.7"
+    AllowedValues:
+      - "dotnetcore2.1"
+      - "dotnetcore3.1"
+      - "go1.x"
+      - "java11"
+      - "java8"
+      - "nodejs10.x"
+      - "nodejs12.x"
+      - "provided"
+      - "python2.7"
+      - "python3.6"
+      - "python3.7"
+      - "python3.8"
+      - "ruby2.5"
+      - "ruby2.7"
+
+
+Resources:
+
+  sourceBucketPermission:
+    Description: "necessary permissions to run lambda function off source bucket triggers"
+    Type: "AWS::Lambda::Permission"
+    DependsOn: "imageResizeFunction"
+    Properties:
+      Action: "lambda:InvokeFunction"
+      FunctionName: !Sub "${appName}-${environment}-${AWS::AccountId}--main"
+      Principal: "s3.amazonaws.com"
+      SourceAccount: !Ref "AWS::AccountId"
+      SourceArn: !Sub "arn:aws:s3:::${sourceBucketName}"
+
+  resultBucket:
+    Description: "s3 bucket where the resized images will be copied"
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Sub "${appName}-${environment}-${AWS::AccountId}--result"
+
+  imageResizeFunction:
+    Description: "lambda function that resizes and copies images"
+    Type: "AWS::Lambda::Function"
+    Properties:
+      FunctionName: !Sub "${appName}-${environment}-${AWS::AccountId}--main"
+      Handler: "image-resize_lambda.lambda_handler"
+      Role: !GetAtt "lambdaIAMRole.Arn"
+      Runtime: !Ref "codeRuntime"
+      Layers:
+        - !Ref "pillowLayer"
+      Timeout: 10
+      Code:
+        S3Bucket: !Ref "codeBucketName"
+        S3Key: !Ref "codeKey"
+      Environment:
+        Variables:
+          resultBucketNameVar: !Sub "${appName}-${environment}-${AWS::AccountId}--result"
+          imageMaxSizeVar: !Ref "imageMaxSize"
+
+  lambdaIAMRole:
+    Description: "permissions for lambda function"
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+              - "sts:AssumeRole"
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+      Policies:
+        - PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action:
+                - "logs:CreateLogGroup"
+                - "logs:CreateLogStream"
+                - "logs:PutLogEvents"
+                Effect: "Allow"
+                Resource:
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${appName}-${environment}-${AWS::AccountId}--main:*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${appName}-${environment}-${AWS::AccountId}--notification:*"
+              - Action:
+                  - "s3:*"
+                Effect: "Allow"
+                Resource: "*"
+              - Action:
+                  - "rekognition:*"
+                Effect: "Allow"
+                Resource: "*"
+          PolicyName: "lambda"
+
+  lambdaLogGroup:
+    Description: "log group for lambda function"
+    Type: "AWS::Logs::LogGroup"
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${appName}-${environment}-${AWS::AccountId}--main"
+      RetentionInDays: 90
+
+  pillowLayer:
+    # source: arn:aws:lambda:eu-central-1:113088814899:layer:Klayers-python37-Pillow:11
+    # via https://github.com/keithrozario/Klayers
+    Description: "layer to add pillow package (python imaging library) to lambda function"
+    Type: "AWS::Lambda::LayerVersion"
+    Properties:
+      LayerName: "pillow-layer"
+      CompatibleRuntimes:
+        - "python3.7"
+      Content:
+        S3Bucket: !Ref "codeBucketName"
+        S3Key: "Klayers-python37-Pillow.zip"
+
+
+# -------------------------------
+# add notification event to existing S3 bucket
+
+# TODO: IN DEPLOYMENT FILE, oder: MANUELL UMSTELLEN
+
+  LambdaTrigger:
+    Description: "service token to trigger lambda function off s3"
+    Type: "Custom::LambdaTrigger"
+    DependsOn: "sourceBucketPermission"
+    Properties:
+      ServiceToken: !GetAtt "notificationLambdaFunction.Arn"
+      LambdaArn: !GetAtt "imageRecognitionFunction.Arn"
+      Bucket: !Ref "sourceBucketName"
+
+  notificationLambdaFunction:
+    Description: "another lambda function that adds a notification trigger to source bucket"
+    Type: "AWS::Lambda::Function"
+    Properties:
+      FunctionName: !Sub "${appName}-${environment}-${AWS::AccountId}--notification"
+      Description: "adds notification event to existing S3 bucket"
+      Handler: "index.lambda_handler" # inline, so we can use cfnresponse
+      Role: !GetAtt "lambdaIAMRole.Arn"
+      Runtime: "python3.7"
+      Timeout: 50
+      Code:
+        ZipFile: |
+
+            import json
+            import boto3
+            import cfnresponse
+            
+            s3 = boto3.resource('s3')
+            
+            def lambda_handler(event, context):
+                print('received event: ' + json.dumps(event))
+                responseData={}
+                try:
+                    if event['RequestType'] == 'Create' or event['RequestType'] == 'Update':
+                        print('request type: ' + event['RequestType'])
+                        LambdaArn=event['ResourceProperties']['LambdaArn']
+                        Bucket=event['ResourceProperties']['Bucket']
+                        add_notification(LambdaArn, Bucket)
+                        responseData = {'Bucket': Bucket}
+                    responseStatus = 'SUCCESS'
+                except Exception as e:
+                    print('Failed to process:' + e)
+                    responseStatus = 'FAILURE'
+                    responseData = {'Failure': 'an error occured'}
+                cfnresponse.send(event, context, responseStatus, responseData)
+
+            def add_notification(LambdaArn, Bucket):
+                bucket_notification = s3.BucketNotification(Bucket)
+                response = bucket_notification.put(
+                  NotificationConfiguration={
+                    'LambdaFunctionConfigurations': [
+                      {
+                          'LambdaFunctionArn': LambdaArn,
+                          'Events': [
+                              's3:ObjectCreated:*'
+                          ]
+                      }
+                    ]
+                  }
+                )
+                print('added notification')
+
+
+# -------------------------------
