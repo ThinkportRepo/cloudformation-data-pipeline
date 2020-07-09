@@ -1,0 +1,22 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "source bucket for data pipeline"
+
+
+Parameters:
+
+  appName:
+    Type: "String"
+    Default: "workshop"
+
+  environment:
+    Type: "String"
+    Default: "dev"
+
+
+Resources:
+
+  sourceBucket:
+    Type: "AWS::S3::Bucket"
+    Description: "source bucket for data pipeline"
+    Properties:
+      BucketName: !Sub "${appName}-${environment}-${AWS::AccountId}--source"

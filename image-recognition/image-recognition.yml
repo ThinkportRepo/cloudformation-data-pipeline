@@ -7,7 +7,7 @@ Parameters:
   imageRecognitionObject:
     Description: "object to be recognized in images"
     Type: "String"
-    Default: "Car"
+    Default: "Cat"
 
   imageRecognitionConfidence:
     Description: "minimum confidence for the recognition algorithm, in percent (> 55)"
@@ -37,7 +37,7 @@ Parameters:
   codeBucketName:
     Description: "s3 bucket that contains your lambda code"
     Type: "String"
-    Default: "webinar-dev-123456789--code"
+    Default: "workshop-dev-123456789--code"
 
   codeKey:
     Description: "name of the lambda code zip file"
@@ -45,9 +45,9 @@ Parameters:
     Default: "image-recognition_lambda.py.zip"
 
   sourceBucketName:
-    Description: "source data s3 bucket"
+    Description: "source s3 bucket"
     Type: "String"
-    Default: "webinar-dev-123456789--rawdata"
+    Default: "workshop-dev-123456789--rawdata"
 
   codeRuntime:
     Description: "runtime of your lambda function"
@@ -78,7 +78,7 @@ Resources:
     DependsOn: "imageRecognitionFunction"
     Properties:
       Action: "lambda:InvokeFunction"
-      FunctionName: !Sub "${appName}-${environment}-${AWS::AccountId}--main"
+      FunctionName: !Sub "${appName}-${environment}--function"
       Principal: "s3.amazonaws.com"
       SourceAccount: !Ref "AWS::AccountId"
       SourceArn: !Sub "arn:aws:s3:::${sourceBucketName}"
@@ -93,7 +93,7 @@ Resources:
     Description: "lambda function that recognizes objects and copies images"
     Type: "AWS::Lambda::Function"
     Properties:
-      FunctionName: !Sub "${appName}-${environment}-${AWS::AccountId}--main"
+      FunctionName: !Sub "${appName}-${environment}--function"
       Description: "image recognition lambda function"
       Handler: "image-recognition_lambda.lambda_handler"
       Role: !GetAtt "lambdaIAMRole.Arn"
@@ -132,8 +132,7 @@ Resources:
                 - "logs:PutLogEvents"
                 Effect: "Allow"
                 Resource:
-                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${appName}-${environment}-${AWS::AccountId}--main:*"
-                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${appName}-${environment}-${AWS::AccountId}--notification:*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${appName}-${environment}--function:*"
               - Action:
                   - "s3:*"
                 Effect: "Allow"
@@ -148,73 +147,5 @@ Resources:
     Description: "log group for lambda function"
     Type: "AWS::Logs::LogGroup"
     Properties:
-      LogGroupName: !Sub "/aws/lambda/${appName}-${environment}-${AWS::AccountId}--main"
+      LogGroupName: !Sub "/aws/lambda/${appName}-${environment}--function"
       RetentionInDays: 90
-
-
-# -------------------------------
-# add notification event to existing S3 bucket
-
-  LambdaTrigger:
-    Description: "service token to trigger lambda function off s3"
-    Type: "Custom::LambdaTrigger"
-    DependsOn: "sourceBucketPermission"
-    Properties:
-      ServiceToken: !GetAtt "notificationLambdaFunction.Arn"
-      LambdaArn: !GetAtt "imageRecognitionFunction.Arn"
-      Bucket: !Ref "sourceBucketName"
-
-  notificationLambdaFunction:
-    Description: "another lambda function that adds a notification trigger to source bucket"
-    Type: "AWS::Lambda::Function"
-    Properties:
-      FunctionName: !Sub "${appName}-${environment}-${AWS::AccountId}--notification"
-      Description: "adds notification event to existing S3 bucket"
-      Handler: "index.lambda_handler" # inline, so we can use cfnresponse
-      Role: !GetAtt "lambdaIAMRole.Arn"
-      Runtime: "python3.7"
-      Timeout: 50
-      Code:
-        ZipFile: |
-
-            import json
-            import boto3
-            import cfnresponse
-            
-            s3 = boto3.resource('s3')
-            
-            def lambda_handler(event, context):
-                print('received event: ' + json.dumps(event))
-                responseData={}
-                try:
-                    if event['RequestType'] == 'Create' or event['RequestType'] == 'Update':
-                        print('request type: ' + event['RequestType'])
-                        LambdaArn=event['ResourceProperties']['LambdaArn']
-                        Bucket=event['ResourceProperties']['Bucket']
-                        add_notification(LambdaArn, Bucket)
-                        responseData = {'Bucket': Bucket}
-                    responseStatus = 'SUCCESS'
-                except Exception as e:
-                    print('Failed to process:' + e)
-                    responseStatus = 'FAILURE'
-                    responseData = {'Failure': 'an error occured'}
-                cfnresponse.send(event, context, responseStatus, responseData)
-
-            def add_notification(LambdaArn, Bucket):
-                bucket_notification = s3.BucketNotification(Bucket)
-                response = bucket_notification.put(
-                  NotificationConfiguration={
-                    'LambdaFunctionConfigurations': [
-                      {
-                          'LambdaFunctionArn': LambdaArn,
-                          'Events': [
-                              's3:ObjectCreated:*'
-                          ]
-                      }
-                    ]
-                  }
-                )
-                print('added notification')
-
-
-# -------------------------------
