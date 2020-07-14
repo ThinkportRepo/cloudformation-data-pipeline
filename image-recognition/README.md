@@ -13,7 +13,7 @@ Requires an AWS Account with access permission to CloudFormation, S3, Lambda, IA
 * Create Stack
 * With new resources
 * Template is ready
-* Upload a teamplate file
+* Upload a template file
 * Choose "code-bucket.yml" / "source-bucket.yml" from the repository. Then, enter a stack name, the requested parameters and any tags you might want to give the stack (ex: name). If constructed this way, the names of the buckets will be "[appName]-[environment]-[your AWS Account ID]--code" and "[appName]-[environment]-[your AWS Account ID]--source", using the parameters you entered.
 
 2. Place "image-recognition_lambda.py.zip" (important: .zip version) from the repository in the code bucket you just created/identified.
@@ -24,7 +24,7 @@ Requires an AWS Account with access permission to CloudFormation, S3, Lambda, IA
 * Create Stack
 * With new resources
 * Template is ready
-* Upload a teamplate file
+* Upload a template file
 * Choose "image-recognition.yml" from the repository. IMPORTANT: In the "Parameters" section, you have to set "codeBucketName" as the name of the bucket that contains your code, and likewise "sourceBucketName" for your source bucket. "codeKey" is the name of your lambda function and "codeRuntime" its runtime, for which the default is correct unless you changed them. For the other parameters, follow their descriptions. They can later be changed. Also, add any tags you might want to give the stack (ex: name).
 
 4. Set a notification trigger from your source bucket to the lambda function:
@@ -69,5 +69,5 @@ Upload an image file to your source bucket. If it contains (or does not contain,
 * CloudFormation
 * Choose the stack
 * Update
-* Use current Template
+* Use current template
 * Enter a different "imageRecognitionObject"/"imageRecognitionMode"/"imageRecognitionConfidence"
