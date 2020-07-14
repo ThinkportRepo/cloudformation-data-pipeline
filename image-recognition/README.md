@@ -14,8 +14,7 @@ Requires an AWS Account with access permission to CloudFormation, S3, Lambda, IA
 * With new resources
 * Template is ready
 * Upload a teamplate file
-* Choose "code-bucket.yml" / "source-bucket.yml" from the repository. Then, enter a stack name, the requested parameters and any tags you might want to give the stack (ex: name).
-If constructed this way, the names of the buckets will be "[appName]-[environment]-[your AWS Account ID]--code" and "[appName]-[environment]-[your AWS Account ID]--source", using the parameters you entered.
+* Choose "code-bucket.yml" / "source-bucket.yml" from the repository. Then, enter a stack name, the requested parameters and any tags you might want to give the stack (ex: name). If constructed this way, the names of the buckets will be "[appName]-[environment]-[your AWS Account ID]--code" and "[appName]-[environment]-[your AWS Account ID]--source", using the parameters you entered.
 
 2. Place "image-recognition_lambda.py.zip" (important: .zip version) from the repository in the code bucket you just created/identified.
 
@@ -28,7 +27,7 @@ If constructed this way, the names of the buckets will be "[appName]-[environmen
 * Upload a teamplate file
 * Choose "image-recognition.yml" from the repository. IMPORTANT: In the "Parameters" section, you have to set "codeBucketName" as the name of the bucket that contains your code, and likewise "sourceBucketName" for your source bucket. "codeKey" is the name of your lambda function and "codeRuntime" its runtime, for which the default is correct unless you changed them. For the other parameters, follow their descriptions. They can later be changed. Also, add any tags you might want to give the stack (ex: name).
 
-4. Set a notification trigger from your source bucket to the lambda function.
+4. Set a notification trigger from your source bucket to the lambda function:
 * AWS Services
 * S3
 * Choose your source bucket
@@ -41,15 +40,14 @@ If constructed this way, the names of the buckets will be "[appName]-[environmen
 * Choose your lambda function
 * Save
 
-5. To delete a stack, first empty all S3 buckets that it contains. Deleting a stack will also delete
-all associated resources unless specified otherwise.
+5. To delete a stack, first empty all S3 buckets that it contains. Deleting a stack will also delete all associated resources unless specified otherwise.
 
 
 ## Alternative Setup via Bash Script -- requires a Unix system
 
 1. Create/identitfy source and code buckets as above.
 
-2. Open "deployment.sh" and enter your parameters in the first part as requested.
+2. Open "deployment.sh" and enter your parameters in the first part as requested:
 * accId_param: your Accound Number (Find it via "aws sts get-caller-identity", key "Account")
 * region_param: the default region your account will be set to, where all resources will be deployed
 * appName_param: your app's name
